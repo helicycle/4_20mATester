@@ -19,7 +19,28 @@
 #include <LiquidCrystal.h>
 #include <Wire.h>
 #include <Adafruit_MCP4725.h>
-#define voltsIn A0
+#include <Keypad.h>
+
+#define dacVoltsIn A6
+#define dacAddress 0x64
+#define ledpin 13
+
+const byte ROWS = 4; // Four rows
+const byte COLS = 4; // Four columns
+					 // Define the Keymap
+char keys[ROWS][COLS] = {
+	{ '1','2','3','A' },
+	{ '4','5','6','B' },
+	{ '7','8','9','C' },
+	{ '*','0','#','D' }
+};
+// Connect keypad ROW0, ROW1, ROW2 and ROW3 to these Arduino pins.
+byte rowPins[ROWS] = { 9, 8, 7, 6 };
+// Connect keypad COL0, COL1 and COL2 to these Arduino pins.
+byte colPins[COLS] = { A3, A2, A1, A0 };
+
+// Create the Keypad
+Keypad kpd = Keypad(makeKeymap(keys), rowPins, colPins, ROWS, COLS);
 
 // all of our LCD pins
 int lcdRSPin = 12;
@@ -29,81 +50,104 @@ int lcdD5Pin = 4;
 int lcdD6Pin = 3;
 int lcdD7Pin = 2;
 
-Adafruit_MCP4725 dac; // constructor
-int pwmVoltageOutPin = 9;     // LED connected to digital pin 9
-
 // initialize the library with the numbers of the interface pins
 LiquidCrystal lcd(lcdRSPin, lcdEPin,
 	lcdD4Pin, lcdD5Pin, lcdD6Pin, lcdD7Pin);
 
+Adafruit_MCP4725 dac; // constructor
+
 void setup()
 {
+	dac.begin(dacAddress); // The I2C Address: Run the I2C Scanner if you're not sure  
+	analogReference(DEFAULT);
+
+	//TEMP
+	pinMode(ledpin, OUTPUT);
+	digitalWrite(ledpin, HIGH);
+	
+	// set up serial
+	Serial.begin(9600);
+
 	// set up the LCD's number of columns and rows: 
 	lcd.begin(16, 2);
 
-	// Print a message to the LCD.
+	// Print logo to the LCD.
 	lcd.clear();
 	lcd.setCursor(0, 0);
 	lcd.print("  KECK-TRONICS");
 	lcd.setCursor(0, 1);
 	lcd.print(" PROCESS TESTER");
-
-	dac.begin(0x62); // The I2C Address: Run the I2C Scanner if you're not sure  
-	pinMode(pwmVoltageOutPin, OUTPUT);   // sets the pin as output
-
-	// set up serial
-	Serial.begin(9600);
+	// Let display for 2 seconds
+	delay(2000);
+	lcd.clear();
+	lcd.setCursor(0, 0);
+	lcd.print("Exp Volts ");
+	lcd.setCursor(0, 1);
+	lcd.print("Volts In ");
+	lcd.cursor();
+	lcd.setCursor(0, 1);
 }
 
 void loop(void) {
 
 	uint32_t dac_value;
 	int adcValueRead = 0;
-	float voltageRead = 0;
+	float dacVoltage = 0;
+	float filterVoltage = 0;
 
-	float dac_expected_output;
+	float dacExpectedVolts;
 
-	// Let logo from setup display for 1/2 second
-	delay(2000);
-
-
-//	for (dac_value = 0; dac_value < 4096; dac_value = dac_value + 15)
-	for (dac_value = 0; dac_value < 256; dac_value = dac_value + 1)
+	char key = kpd.getKey();
+	if (key)  // Check for a valid key.
+	{
+		switch (key)
 		{
-//		dac_expected_output = (5.0 / 4096.0) * dac_value;
+		case 'A':	// Set current output to 100%, 20mA
+			digitalWrite(ledpin, LOW);
+			break;
+		case 'B':	// Current output up 25%
+			digitalWrite(ledpin, HIGH);
+			break;
+		case 'C':	// Current output down 25%
+			digitalWrite(ledpin, HIGH);
+			break;
+		case 'D':	// Set current output to 0%, 4mA
+			digitalWrite(ledpin, HIGH);
+			break;
+		default:
+			Serial.println(key);
+			lcd.clear();
+			lcd.print(key);
+		}
+	}
+	for (dac_value = 0; dac_value < 4096; dac_value = dac_value + 207)
+	{
+//		dacExpectedVolts = (5.0 / 4096.0) * dac_value;	// .001221 Volts/count
+		dacExpectedVolts = (4.95 / 4096.0) * dac_value; // .001208 Volts/count
 		dac.setVoltage(dac_value, false);
-
-		analogWrite(pwmVoltageOutPin, dac_value);  // analogRead values go from 0 to 1023, analogWrite values from 0 to 255
-
-//		delay(250);
 		delay(250);
 
-		adcValueRead = analogRead(voltsIn);
-		voltageRead = (adcValueRead * 5.0) / 1024.0;
+		Serial.print("\tExpected Voltage: ");
+		Serial.print(dacExpectedVolts, 3);
+		// display it on LCD
+		lcd.setCursor(10, 0);
+		lcd.print(dacExpectedVolts, 3);
+
+		adcValueRead = analogRead(A6);
+//		dacVoltage = (adcValueRead * 5.0) / 1024.0;
+		dacVoltage = (adcValueRead * 4.95) / 1024.0;
+		// display it on LCD
+		lcd.setCursor(10, 1);
+		lcd.print(dacVoltage, 3);
 
 		Serial.print("DAC Value: ");
 		Serial.print(dac_value);
-
-		Serial.print("\tExpected Voltage: ");
-		Serial.print(dac_expected_output, 3);
 
 		Serial.print("\tArduino ADC Value: ");
 		Serial.print(adcValueRead);
 
 		Serial.print("\tArduino Voltage: ");
-		Serial.println(voltageRead, 3);
-
-		// display it on LCD
-		lcd.clear();
-		lcd.setCursor(0, 0);
-		lcd.print("ADC Val");
-		lcd.setCursor(8, 0);
-		lcd.print("ADC Volt");
-		lcd.setCursor(0, 1);
-		lcd.print(adcValueRead);
-		lcd.print(" Raw");
-		lcd.setCursor(10, 1);
-		lcd.print(voltageRead);
-		lcd.print("V");
+		Serial.println(dacVoltage, 3);
+		delay(2500);
 	}
 }
