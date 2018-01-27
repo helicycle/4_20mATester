@@ -25,16 +25,24 @@
 #define dacAddress 0x64
 #define ledpin 13
 
-//#define VOLTS_PER_COUNT	.001221	// 5.00 VOLTS MAX
-#define VOLTS_PER_COUNT	.001208	// 4.95 VOLTS MAX
-#define CURRENT_4mA		1/VOLTS_PER_COUNT
-#define CURRENT_2mA		CURRENT_4mA / 2
-#define CURRENT_1mA		CURRENT_4mA / 4
-#define CURRENT_125PCT	CURRENT_4mA * 5
-#define CURRENT_100PCT	CURRENT_4mA * 4
-#define CURRENT_25PCT	CURRENT_4mA
-#define CURRENT_0PCT	CURRENT_4mA
-
+#define OPAMP_GAIN			2.00
+#define VCC					4.94
+#define REFERENCE_VOLTAGE	VCC		// VCC is currently the ref voltage
+#define DAC_VOLTS_PER_COUNT	(VCC / 4095.0)
+#define CURRENT_4mA		(.5 / DAC_VOLTS_PER_COUNT)
+#define CURRENT_2mA		(CURRENT_4mA / 2)
+#define CURRENT_1mA		(CURRENT_4mA / 4)
+#define CURRENT_100uA	(CURRENT_1mA / 10)
+#define CURRENT_10uA	(CURRENT_1mA / 100)
+#define CURRENT_125PCT	(CURRENT_4mA * 6)
+#define CURRENT_100PCT	(CURRENT_4mA * 5)
+#define CURRENT_25PCT	(CURRENT_4mA)
+#define CURRENT_0PCT	(CURRENT_4mA)
+// Cursor positions
+#define CURSOR_ROW		0
+#define CURSOR_1mA		1
+#define CURSOR_01mA		3
+#define CURSOR_001mA	4
 
 const byte ROWS = 4; // Four rows
 const byte COLS = 4; // Four columns
@@ -67,6 +75,7 @@ LiquidCrystal lcd(lcdRSPin, lcdEPin,
 
 Adafruit_MCP4725 dac; // constructor
 uint32_t dac_value = CURRENT_0PCT;
+byte x = CURSOR_1mA;
 
 void setup()
 {
@@ -92,19 +101,25 @@ void setup()
 	// Let display for 2 seconds
 	delay(500);
 	lcd.clear();
-	lcd.setCursor(0, 0);
-	lcd.print("Exp Volts ");
-	lcd.setCursor(0, 1);
-	lcd.print("Volts In ");
-	lcd.cursor();
-	lcd.setCursor(0, 1);
+	lcd.setCursor(5, 0);
+	lcd.print("mA");
+	lcd.setCursor(9, 0);
+	lcd.print("Ex");
+	lcd.setCursor(5, 1);
+	lcd.print("mA");
+	lcd.setCursor(9, 1);
+	lcd.print("In ");
+	lcd.noCursor();
 }
 
 void loop(void) {
 
-//	uint32_t dac_value = CURRENT_0PCT;
+	char incrementText[3][1] = { "1.0", "0.1", ".01" };
+	float incrementVal[3] = { CURRENT_1mA, CURRENT_100uA, CURRENT_10uA };
+	int incrementIdx = 1;
 	int adcValueRead = 0;
 	float dacVoltage = 0;
+	float loopCurrent = 0;
 	float filterVoltage = 0;
 
 	float dacExpectedVolts;
@@ -125,31 +140,37 @@ void loop(void) {
 			else
 				dac_value -= CURRENT_1mA;
 			break;
-		case '4':	// Set current output to
-			dac_value = CURRENT_100PCT;
+		case '4':	// Move cursor left
+			lcd.setCursor(5, 0);
+			lcd.print("1.0mA");
+			lcd.print("0.1mA");
+			lcd.print(".01mA");
 			break;
-		case '6':	// Set current output to
-			dac_value = CURRENT_100PCT;
+		case '6':	// Move cursor right
+			lcd.setCursor(5, 0);
+			lcd.print("1.0mA");
+			lcd.print("0.1mA");
+			lcd.print(".01mA");
 			break;
 		case 'A':	// Set current output to 100%, 20mA
-			digitalWrite(ledpin, LOW);
+			lcd.noCursor();
 			dac_value = CURRENT_100PCT;
 			break;
 		case 'B':	// Current output up 25%, max 24mA
-			digitalWrite(ledpin, HIGH);
+			lcd.noCursor();
 			dac_value += CURRENT_25PCT;
 			if (dac_value >= CURRENT_125PCT)
 				dac_value = CURRENT_125PCT;
 			break;
 		case 'C':	// Current output down 25%, down to 0mA
-			digitalWrite(ledpin, LOW);
+			lcd.noCursor();
 			if (dac_value <= CURRENT_0PCT)
 				dac_value = 0;
 			else
 				dac_value -= CURRENT_25PCT;
 			break;
 		case 'D':	// Set current output to 0%, 4mA
-			digitalWrite(ledpin, HIGH);
+			lcd.noCursor();
 			dac_value = CURRENT_0PCT;
 			break;
 		default:
@@ -158,30 +179,42 @@ void loop(void) {
 			lcd.print(key);
 		}
 	}
-//		dacExpectedVolts = (5.0 / 4096.0) * dac_value;	// .001221 Volts/count
-	dacExpectedVolts = (4.95 / 4096.0) * dac_value; // .001208 Volts/count
+	dacExpectedVolts = dac_value * DAC_VOLTS_PER_COUNT;
 	dac.setVoltage(dac_value, false);
 	delay(250);
 
 	Serial.print("\tExpected Voltage: ");
 	Serial.print(dacExpectedVolts, 3);
-	// display it on LCD
-	lcd.setCursor(10, 0);
-	lcd.print(dacExpectedVolts, 3);
-
-	adcValueRead = analogRead(A6);
-//		dacVoltage = (adcValueRead * 5.0) / 1024.0;
-	dacVoltage = (adcValueRead * 4.95) / 1024.0;
-	// display it on LCD
-	lcd.setCursor(10, 1);
-	lcd.print(dacVoltage, 3);
 
 	Serial.print("DAC Value: ");
 	Serial.print(dac_value);
+
+	adcValueRead = analogRead(A6);
+	dacVoltage = (adcValueRead * REFERENCE_VOLTAGE) / 1024.0;
 
 	Serial.print("\tArduino ADC Value: ");
 	Serial.print(adcValueRead);
 
 	Serial.print("\tArduino Voltage: ");
 	Serial.println(dacVoltage, 3);
+
+	// display on LCD
+	lcd.setCursor(12, 0);
+	lcd.print(dacExpectedVolts, 2);
+
+	// display on LCD
+	lcd.setCursor(12, 1);
+	lcd.print(dacVoltage, 2);
+
+	loopCurrent = (dacVoltage / (.250 / OPAMP_GAIN));	// 250ohm resistor, ".250" for display of milli
+	// Display loop current on LCD
+	lcd.setCursor(0, 1);
+	lcd.print("     mA");	// Clear decimal artifacts
+	if (round(loopCurrent) >= 10)
+		lcd.setCursor(0, 1);
+	else
+		lcd.setCursor(1, 1);
+	lcd.print(loopCurrent, 2);
+	Serial.print(" round ");
+	Serial.print(round(loopCurrent));
 }
