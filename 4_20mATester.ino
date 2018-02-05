@@ -4,16 +4,17 @@
 *
 */
 
-#include <LiquidCrystal.h>
 #include <Wire.h>
+#include <LiquidCrystal_I2C.h>
 #include <Adafruit_MCP4725.h>
 #include <Keypad.h>
 
-#define dacVoltsIn A6
-#define dacAddress 0x64
+#define DAC_VOLTS_IN A7
+#define DAC_I2C_ADDRESS 0x64
+//#define DAC_I2C_ADDRESS 0x62
 
 #define OPAMP_GAIN			1.638	// Based on 4096 this would be 1.639344
-#define VCC					5.00
+#define VCC					4.96
 #define REFERENCE_VOLTAGE	VCC		// VCC is currently the analog ref voltage
 #define DAC_VOLTS_PER_COUNT	(REFERENCE_VOLTAGE / 4095.0)
 #define CURRENT_4mA		((1/OPAMP_GAIN) / DAC_VOLTS_PER_COUNT)
@@ -29,6 +30,17 @@
 #define KEY_HOLD_TIME	1000
 #define KEY_REPEAT_RATE	250
 
+// Set I2C addr and Arduino Nano pins for I2C LCD
+#define LCD_I2C_ADDR       0x3F
+#define BACKLIGHT_PIN      3
+#define En_pin             2
+#define Rw_pin             1
+#define Rs_pin             0
+#define D4_pin             4
+#define D5_pin             5
+#define D6_pin             6
+#define D7_pin             7
+
 const byte ROWS = 4; // Four rows
 const byte COLS = 4; // Four columns
 // Define the Keymap
@@ -38,35 +50,30 @@ char keys[ROWS][COLS] = {
 	{ '7','8','9','C' },
 	{ '*','0','#','D' }
 };
-// Connect keypad ROW0, ROW1, ROW2 and ROW3 to Arduino pins.
+// Connect keypad ROWS and COLS to Arduino pins.
 byte rowPins[ROWS] = { 9, 8, 7, 6 };
-// Connect keypad COL0, COL1, COL2 and COL3 to Arduino pins.
 byte colPins[COLS] = { A3, A2, A1, A0 };
 
 // Create the Keypad
 Keypad kpd = Keypad(makeKeymap(keys), rowPins, colPins, ROWS, COLS);
 
-// LCD pins
-int lcdRSPin = 12;
-int lcdEPin = 11;
-int lcdD4Pin = 5;
-int lcdD5Pin = 4;
-int lcdD6Pin = 3;
-int lcdD7Pin = 2;
+//Initialise the LCD
+LiquidCrystal_I2C	lcd(LCD_I2C_ADDR, En_pin, Rw_pin, Rs_pin, D4_pin, D5_pin, D6_pin, D7_pin);
 
-// Initialize LCD constructor with the numbers of the interface pins
-LiquidCrystal lcd(lcdRSPin, lcdEPin,
-	lcdD4Pin, lcdD5Pin, lcdD6Pin, lcdD7Pin);
-
-Adafruit_MCP4725 dac; // constructor
+// Initialize the DAC
+Adafruit_MCP4725 dac;
 
 void setup()
 {
-	dac.begin(dacAddress); // The I2C Address of the MCP4725 DAC
+	dac.begin(DAC_I2C_ADDRESS); // The I2C Address of the MCP4725 DAC
 	analogReference(DEFAULT);
 
 	// set up serial
 	// Serial.begin(9600);
+
+	//Switch on LCD backlight
+	lcd.setBacklightPin(BACKLIGHT_PIN, POSITIVE);
+	lcd.setBacklight(HIGH);
 
 	// set up the LCD's number of columns and rows: 
 	lcd.begin(16, 2);
@@ -74,12 +81,12 @@ void setup()
 	// Print logo to the LCD.
 	lcd.clear();
 	lcd.setCursor(0, 0);
-	lcd.print("  Keck-Tronix");
+	lcd.print("  KeckTronix");
 	lcd.setCursor(0, 1);
-	lcd.print("   BangDucer");
+	lcd.print("  Bang-Ducer");
 	// Let display for 2 seconds
 	delay(2000);
-	
+
 	// Setup initial LCD screen
 	lcd.clear();
 	lcd.setCursor(6, 0);
@@ -95,7 +102,7 @@ void setup()
 
 void loop(void) {
 
-	char incrementText[3][4] = {".01", ".10", "1.0"};
+	char incrementText[3][4] = { ".01", ".10", "1.0" };
 	const byte numIncrements = 2;	// 0-2, total 3
 	float incrementVal[] = { CURRENT_10uA, CURRENT_100uA, CURRENT_1mA };
 	static int incrementIdx = 1;
@@ -109,13 +116,13 @@ void loop(void) {
 	static char holdKey;
 
 	kpd.setHoldTime(KEY_HOLD_TIME);		// Time to wait until key repeats
-	if (kpd.getState() == HOLD)	
+	if (kpd.getState() == HOLD)
 		delay(KEY_REPEAT_RATE);
 
 	char key = kpd.getKey();
 	if (key || kpd.getState() == HOLD)  // Check for a valid key.
 	{
-		if(key)
+		if (key)
 			holdKey = key;	// Keypress is read only once if held down, so store it for key repeat
 		switch (holdKey)
 		{
@@ -123,8 +130,8 @@ void loop(void) {
 			dac_value += incrementVal[incrementIdx];
 			if (dac_value >= CURRENT_125PCT)
 				dac_value = CURRENT_125PCT;
-//			lcd.setCursor(9, 0);	// for future use with an LCD that has up/down arrows
-//			lcd.print((char)0xff);
+			//			lcd.setCursor(9, 0);	// for future use with an LCD that has up/down arrows
+			//			lcd.print((char)0xff);
 			break;
 		case '8':	// Decrease current output by increment Value
 			if (dac_value <= incrementVal[incrementIdx])
@@ -170,7 +177,7 @@ void loop(void) {
 	// Output to the DAC
 	dacExpectedVolts = dac_value * DAC_VOLTS_PER_COUNT;
 	dac.setVoltage(round(dac_value), false);
-//	delay(100);	// It seems there is no delay needed for DAC to settle in this app
+	//	delay(100);	// It seems there is no delay needed for DAC to settle in this app
 
 	// Serial.print("\tExpected Volts: ");
 	// Serial.print(dacExpectedVolts, 3);
@@ -179,7 +186,7 @@ void loop(void) {
 	// Serial.println(dac_value, 2);
 	// Serial.println(round(dac_value));
 
-	adcValueRead = analogRead(A6);
+	adcValueRead = analogRead(DAC_VOLTS_IN);
 	dacVoltage = (adcValueRead * REFERENCE_VOLTAGE) / 1024.0;
 
 	// Serial.print("\tADC Value: ");
@@ -194,7 +201,8 @@ void loop(void) {
 
 	// display on LCD
 	lcd.setCursor(12, 1);
-	lcd.print(dacVoltage, 2);
+//	lcd.print(dacVoltage, 2);
+	lcd.print(adcValueRead);
 
 	// Display the commanded current on LCD
 	commandedCurrent = (dacExpectedVolts / (.250 / OPAMP_GAIN));	// 250ohm resistor, ".250" for display of milli
