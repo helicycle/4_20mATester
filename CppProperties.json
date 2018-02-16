@@ -8,7 +8,6 @@
         "${projectRoot}..\\..\\..\\..\\..\\Program Files (x86)\\Arduino\\hardware\\arduino\\avr\\libraries\\Wire\\src",
         "${projectRoot}..\\..\\..\\..\\..\\Program Files (x86)\\Arduino\\libraries\\LiquidCrystal",
         "${projectRoot}..\\libraries\\Adafruit_MCP4725",
-        "${projectRoot}..\\libraries\\Keypad\\src",
         "${projectRoot}..\\..\\..\\..\\..\\Program Files (x86)\\Arduino\\libraries\\LiquidCrystal\\utility",
         "${projectRoot}..\\..\\..\\..\\..\\Program Files (x86)\\Arduino\\hardware\\arduino\\avr\\libraries\\Wire\\src\\utility",
         "${projectRoot}..\\..\\..\\..\\..\\Program Files (x86)\\Arduino\\libraries",
